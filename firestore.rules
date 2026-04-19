@@ -1,0 +1,100 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validations ---
+    
+    function isValidUser(data) {
+      return data.email is string && data.email.size() <= 200
+             && (data.get('displayName', '') is string && data.get('displayName', '').size() <= 100)
+             && data.createdAt is timestamp;
+    }
+
+    function isValidThread(data) {
+      return data.userId == request.auth.uid
+             && data.title is string && data.title.size() <= 200
+             && data.createdAt is timestamp
+             && data.updatedAt is timestamp;
+    }
+
+    function isValidMessage(data) {
+      return data.role in ['user', 'model']
+             && data.content is string && data.content.size() <= 10000
+             && data.createdAt is timestamp;
+    }
+
+    // --- Collection Routes ---
+
+    // Users
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().createdAt == request.time;
+      allow update: if isOwner(userId) && isValidUser(incoming()) 
+                     && incoming().createdAt == existing().createdAt
+                     && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'lastSeen']);
+
+      // User Threads
+      match /threads/{threadId} {
+        allow list: if isOwner(userId);
+        allow get: if isOwner(userId) && isValidId(threadId);
+        allow create: if isOwner(userId) && isValidThread(incoming()) && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+        allow update: if isOwner(userId) && isValidThread(incoming())
+                       && incoming().createdAt == existing().createdAt
+                       && incoming().updatedAt == request.time
+                       && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'lastMessage', 'updatedAt']);
+        allow delete: if isOwner(userId);
+
+        // Thread Messages
+        match /messages/{messageId} {
+          allow list: if isOwner(userId);
+          allow get: if isOwner(userId) && isValidId(messageId);
+          allow create: if isOwner(userId) && isValidMessage(incoming()) && incoming().createdAt == request.time;
+          // Messages are generally immutable in this flow
+          allow delete: if isOwner(userId);
+        }
+      }
+
+      // Usage Tracking
+      match /vision_usage/{id} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && incoming().timestamp == request.time;
+      }
+
+      match /speech_usage/{id} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && incoming().timestamp == request.time;
+      }
+
+      match /tools_usage/{id} {
+        allow list, get: if isOwner(userId);
+        allow create: if isOwner(userId) && incoming().timestamp == request.time;
+      }
+    }
+  }
+}

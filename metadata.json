@@ -1,0 +1,14 @@
+{
+  "name": "Nexus AI Dashboard",
+  "description": "A high-performance, unified developer dashboard featuring persistent Gemini AI threads, enterprise-grade auth, computer vision, and neural speech generation synthesized by Gemini 3.1.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "AI Chat with History",
+    "Firebase Auth",
+    "Image Analysis",
+    "Neural Speech Gen"
+  ]
+}
